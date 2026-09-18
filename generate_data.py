@@ -34,6 +34,7 @@ NUM_BATCHES = TOTAL_DOCUMENTS // DOCUMENTS_PER_BATCH
 # LLM CALL
 # ============================================================
 
+
 def call_llm(prompt):
     """
     Call Ollama through LiteLLM and return parsed JSON.
@@ -44,12 +45,7 @@ def call_llm(prompt):
             response = completion(
                 model=MODEL,
                 api_base=API_BASE,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": prompt
-                    }
-                ],
+                messages=[{"role": "user", "content": prompt}],
                 temperature=1.0,
                 response_format={"type": "json_object"},
             )
@@ -59,10 +55,7 @@ def call_llm(prompt):
             return json.loads(content)
 
         except Exception as e:
-            print(
-                f"LLM error "
-                f"(attempt {attempt + 1}/{MAX_RETRIES}): {e}"
-            )
+            print(f"LLM error (attempt {attempt + 1}/{MAX_RETRIES}): {e}")
 
             if attempt < MAX_RETRIES - 1:
                 time.sleep(2)
@@ -73,6 +66,7 @@ def call_llm(prompt):
 # ============================================================
 # GENERATE 40 TAGS
 # ============================================================
+
 
 def generate_tags(batch_number):
     """
@@ -155,14 +149,10 @@ Required format:
     if not isinstance(tags, list):
         raise ValueError("Tags must be a list.")
 
-
     tags = [str(tag).strip() for tag in tags]
-    tags 
+    tags
 
-    print(
-        f"\nBatch {batch_number}: generated "
-        f"{len(tags)} tags"
-    )
+    print(f"\nBatch {batch_number}: generated {len(tags)} tags")
 
     for i, tag in enumerate(tags, 1):
         print(f"  {i:02d}. {tag}")
@@ -174,6 +164,7 @@ Required format:
 # GENERATE ONE DOCUMENT
 # ============================================================
 
+
 def generate_document(tags, document_number):
     """
     Generate one realistic enterprise document and choose
@@ -183,10 +174,7 @@ def generate_document(tags, document_number):
     shuffled_tags = tags.copy()
     random.shuffle(shuffled_tags)
 
-    tag_text = "\n".join(
-        f"- {tag}"
-        for tag in shuffled_tags
-    )
+    tag_text = "\n".join(f"- {tag}" for tag in shuffled_tags)
 
     prompt = f"""
 You are generating training data for an enterprise document
@@ -278,9 +266,7 @@ Return ONLY valid JSON in this format:
 """
 
     for attempt in range(MAX_RETRIES):
-
         try:
-
             result = call_llm(prompt)
 
             validate_document(result, tags)
@@ -288,36 +274,25 @@ Return ONLY valid JSON in this format:
             return result
 
         except Exception as e:
-
-            print(
-                f"Document {document_number}: "
-                f"validation failed: {e}"
-            )
+            print(f"Document {document_number}: validation failed: {e}")
 
             if attempt < MAX_RETRIES - 1:
                 time.sleep(1)
 
-    raise RuntimeError(
-        f"Could not generate document {document_number}"
-    )
+    raise RuntimeError(f"Could not generate document {document_number}")
 
 
 # ============================================================
 # VALIDATE DOCUMENT
 # ============================================================
 
+
 def validate_document(document, tags):
 
-    required_keys = {
-        "text",
-        "positive_tags",
-        "negative_tags"
-    }
+    required_keys = {"text", "positive_tags", "negative_tags"}
 
     if not required_keys.issubset(document.keys()):
-        raise ValueError(
-            "Missing required JSON fields."
-        )
+        raise ValueError("Missing required JSON fields.")
 
     text = document["text"]
     positive = document["positive_tags"]
@@ -331,37 +306,27 @@ def validate_document(document, tags):
         raise ValueError("text must be a string.")
 
     if len(text.strip()) < 50:
-        raise ValueError(
-            "Generated document is too short."
-        )
+        raise ValueError("Generated document is too short.")
 
     # --------------------------------------------------------
     # Positive tags
     # --------------------------------------------------------
 
     if not isinstance(positive, list):
-        raise ValueError(
-            "positive_tags must be a list."
-        )
+        raise ValueError("positive_tags must be a list.")
 
     if not 1 <= len(positive) <= 3:
-        raise ValueError(
-            "Number of positive tags must be 1-3."
-        )
+        raise ValueError("Number of positive tags must be 1-3.")
 
     # --------------------------------------------------------
     # Negative tags
     # --------------------------------------------------------
 
     if not isinstance(negative, list):
-        raise ValueError(
-            "negative_tags must be a list."
-        )
+        raise ValueError("negative_tags must be a list.")
 
     if not 3 <= len(negative) <= 6:
-        raise ValueError(
-            "Number of negative tags must be 3-6."
-        )
+        raise ValueError("Number of negative tags must be 3-6.")
 
     # --------------------------------------------------------
     # Exact tag membership
@@ -372,30 +337,22 @@ def validate_document(document, tags):
     if not set(positive).issubset(tag_set):
         invalid = set(positive) - tag_set
 
-        raise ValueError(
-            f"Invalid positive tags: {invalid}"
-        )
+        raise ValueError(f"Invalid positive tags: {invalid}")
 
     if not set(negative).issubset(tag_set):
         invalid = set(negative) - tag_set
 
-        raise ValueError(
-            f"Invalid negative tags: {invalid}"
-        )
+        raise ValueError(f"Invalid negative tags: {invalid}")
 
     # --------------------------------------------------------
     # Duplicate check
     # --------------------------------------------------------
 
     if len(positive) != len(set(positive)):
-        raise ValueError(
-            "Duplicate positive tags."
-        )
+        raise ValueError("Duplicate positive tags.")
 
     if len(negative) != len(set(negative)):
-        raise ValueError(
-            "Duplicate negative tags."
-        )
+        raise ValueError("Duplicate negative tags.")
 
     # --------------------------------------------------------
     # Overlap check
@@ -404,14 +361,13 @@ def validate_document(document, tags):
     overlap = set(positive) & set(negative)
 
     if overlap:
-        raise ValueError(
-            f"Positive/negative overlap: {overlap}"
-        )
+        raise ValueError(f"Positive/negative overlap: {overlap}")
 
 
 # ============================================================
 # EXPAND DOCUMENT INTO PAIRS
 # ============================================================
+
 
 def expand_document(document):
 
@@ -421,25 +377,11 @@ def expand_document(document):
 
     # Positive pairs
     for tag in document["positive_tags"]:
-
-        rows.append(
-            {
-                "text": text,
-                "tag": tag,
-                "score": 1.0
-            }
-        )
+        rows.append({"text": text, "tag": tag, "score": 1.0})
 
     # Negative pairs
     for tag in document["negative_tags"]:
-
-        rows.append(
-            {
-                "text": text,
-                "tag": tag,
-                "score": 0.0
-            }
-        )
+        rows.append({"text": text, "tag": tag, "score": 0.0})
 
     return rows
 
@@ -448,16 +390,16 @@ def expand_document(document):
 # CHECKPOINT PATH
 # ============================================================
 
+
 def checkpoint_path(batch_number):
 
-    return CHECKPOINT_DIR / (
-        f"batch_{batch_number:02d}.parquet"
-    )
+    return CHECKPOINT_DIR / (f"batch_{batch_number:02d}.parquet")
 
 
 # ============================================================
 # GENERATE ONE 1,000 DOCUMENT BATCH
 # ============================================================
+
 
 def generate_batch(batch_number):
 
@@ -468,10 +410,7 @@ def generate_batch(batch_number):
     # --------------------------------------------------------
 
     if path.exists():
-
-        print(
-            f"\nBatch {batch_number} already exists."
-        )
+        print(f"\nBatch {batch_number} already exists.")
 
         df = pd.read_parquet(path)
 
@@ -484,19 +423,10 @@ def generate_batch(batch_number):
     tags = generate_tags(batch_number)
 
     # Save taxonomy too
-    tags_path = (
-        CHECKPOINT_DIR /
-        f"batch_{batch_number:02d}_tags.json"
-    )
+    tags_path = CHECKPOINT_DIR / f"batch_{batch_number:02d}_tags.json"
 
     with open(tags_path, "w", encoding="utf-8") as f:
-
-        json.dump(
-            tags,
-            f,
-            indent=2,
-            ensure_ascii=False
-        )
+        json.dump(tags, f, indent=2, ensure_ascii=False)
 
     # --------------------------------------------------------
     # Generate 1,000 documents
@@ -504,41 +434,21 @@ def generate_batch(batch_number):
 
     all_rows = []
 
-    start_document = (
-        (batch_number - 1)
-        * DOCUMENTS_PER_BATCH
-        + 1
-    )
+    start_document = (batch_number - 1) * DOCUMENTS_PER_BATCH + 1
 
-    end_document = (
-        batch_number
-        * DOCUMENTS_PER_BATCH
-    )
+    end_document = batch_number * DOCUMENTS_PER_BATCH
 
-    print(
-        f"\nGenerating documents "
-        f"{start_document:,} - {end_document:,}"
-    )
+    print(f"\nGenerating documents {start_document:,} - {end_document:,}")
 
-    for document_number in range(
-        start_document,
-        end_document + 1
-    ):
-
-        document = generate_document(
-            tags,
-            document_number
-        )
+    for document_number in range(start_document, end_document + 1):
+        document = generate_document(tags, document_number)
 
         rows = expand_document(document)
 
         all_rows.extend(rows)
 
         # Progress
-        if (
-            document_number - start_document + 1
-        ) % 10 == 0:
-
+        if (document_number - start_document + 1) % 10 == 0:
             print(
                 f"Batch {batch_number}: "
                 f"{document_number - start_document + 1:,}"
@@ -555,16 +465,9 @@ def generate_batch(batch_number):
     df["tag"] = df["tag"].astype(str)
     df["score"] = df["score"].astype("float32")
 
-    df.to_parquet(
-        path,
-        index=False
-    )
+    df.to_parquet(path, index=False)
 
-    print(
-        f"\nSaved checkpoint:"
-        f"\n{path}"
-        f"\nRows: {len(df):,}"
-    )
+    print(f"\nSaved checkpoint:\n{path}\nRows: {len(df):,}")
 
     return df
 
@@ -573,19 +476,14 @@ def generate_batch(batch_number):
 # GENERATE COMPLETE DATASET
 # ============================================================
 
+
 def generate_dataset():
 
     batch_dfs = []
 
-    for batch_number in range(
-        1,
-        NUM_BATCHES + 1
-    ):
-
+    for batch_number in range(1, NUM_BATCHES + 1):
         print("\n" + "=" * 70)
-        print(
-            f"BATCH {batch_number}/{NUM_BATCHES}"
-        )
+        print(f"BATCH {batch_number}/{NUM_BATCHES}")
         print("=" * 70)
 
         df = generate_batch(batch_number)
@@ -598,43 +496,27 @@ def generate_dataset():
 
     print("\nCombining batches...")
 
-    final_df = pd.concat(
-        batch_dfs,
-        ignore_index=True
-    )
+    final_df = pd.concat(batch_dfs, ignore_index=True)
 
     final_df["text"] = final_df["text"].astype(str)
     final_df["tag"] = final_df["tag"].astype(str)
     final_df["score"] = final_df["score"].astype("float32")
 
-    final_df.to_parquet(
-        OUTPUT_FILE,
-        index=False
-    )
+    final_df.to_parquet(OUTPUT_FILE, index=False)
 
     print("\n" + "=" * 70)
     print("DATASET COMPLETE")
     print("=" * 70)
 
-    print(
-        f"Documents: {TOTAL_DOCUMENTS:,}"
-    )
+    print(f"Documents: {TOTAL_DOCUMENTS:,}")
 
-    print(
-        f"Pairwise rows: {len(final_df):,}"
-    )
+    print(f"Pairwise rows: {len(final_df):,}")
 
-    print(
-        f"Output: {OUTPUT_FILE}"
-    )
+    print(f"Output: {OUTPUT_FILE}")
 
     print("\nExample:")
 
-    print(
-        final_df.head(10).to_string(
-            index=False
-        )
-    )
+    print(final_df.head(10).to_string(index=False))
 
     return final_df
 
@@ -644,17 +526,13 @@ def generate_dataset():
 # ============================================================
 
 if __name__ == "__main__":
-
     dataset_df = generate_dataset()
 
     # --------------------------------------------------------
     # Load using Hugging Face datasets
     # --------------------------------------------------------
 
-    dataset = load_dataset(
-        "parquet",
-        data_files=OUTPUT_FILE
-    )
+    dataset = load_dataset("parquet", data_files=OUTPUT_FILE)
 
     print("\nHugging Face dataset:")
     print(dataset)

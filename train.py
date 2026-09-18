@@ -1,6 +1,12 @@
 from model import Model
 from embedding import get_token_embeddings, EMBEDDING_DIM
-from dataset import train_dataset, validation_dataset
+from dataset import (
+    train_dataset,
+    validation_dataset,
+    SENTENCE1_COLUMN,
+    SENTENCE2_COLUMN,
+    SCORE,
+)
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
@@ -9,22 +15,43 @@ from torch.utils.data import DataLoader
 import torch
 import math
 import os
+import logging
+from logger import dict_log
 
 
 MODEL_STATE_DICT = "model_state_dict"
 OPTIMIZER_STATE_DICT = "optimizer_state_dict"
+SCHEDULER_STATE_DICT = "scheduler_state_dict"
 EPOCH = "epoch"
 BEST_VAL_LOSS = "best_val_loss"
 
 
+def collate_fn(batch):
+    premises = [item[SENTENCE1_COLUMN] for item in batch]
+    hypotheses = [item[SENTENCE2_COLUMN] for item in batch]
+    labels = torch.tensor(
+        [item[SCORE] for item in batch],
+        dtype=torch.float,
+    )
+
+    return premises, hypotheses, labels
+
+
 def train() -> None:
+    logger = Config.logger    
 
     train_dataset_loader = DataLoader(
-        train_dataset, shuffle=True, batch_size=Config.train.train_batch_size
+        train_dataset,
+        shuffle=True,
+        batch_size=Config.train.train_batch_size,
+        collate_fn=collate_fn,
     )
 
     validation_dataset_loader = DataLoader(
-        validation_dataset, shuffle=False, batch_size=Config.train.validation_batch_size
+        validation_dataset,
+        shuffle=False,
+        batch_size=Config.train.validation_batch_size,
+        collate_fn=collate_fn,
     )
 
     MODEL = Model(
@@ -56,6 +83,7 @@ def train() -> None:
     best_val_loss = float("inf")
 
     if Config.train.initial_checkpoint:
+        logger.info(f"loading checkpoint - {Config.train.initial_checkpoint}")
         checkpoint = torch.load(
             Config.train.initial_checkpoint, map_location=Config.device
         )
@@ -63,12 +91,15 @@ def train() -> None:
         MODEL.load_state_dict(checkpoint[MODEL_STATE_DICT])
         MODEL.to(Config.device)
         OPTIMIZER.load_state_dict(checkpoint[OPTIMIZER_STATE_DICT])
+        SCHEDULER.load_state_dict(checkpoint[SCHEDULER_STATE_DICT])
         best_val_loss = checkpoint.get(BEST_VAL_LOSS, float("inf"))
+        dict_log({"Epoch": checkpoint[EPOCH], "Validation Loss": best_val_loss}, logging.INFO, heading="Checkpoint metrics")
     else:
         MODEL.to(Config.device)
 
     os.makedirs(Config.train.checkpoint_dir, exist_ok=True)
 
+    logger.info("==== Training started ====")
     for epoch in range(epoch_offset, epoch_offset + num_epochs):
         MODEL.train()
 
@@ -117,23 +148,32 @@ def train() -> None:
         val_loss = val_loss_sum / max(1, val_examples)
         current_lr = SCHEDULER.get_last_lr()[0]
 
-        print(
-            f"epoch {epoch} | train_loss {train_loss:.4f} | "
-            f"val_loss {val_loss:.4f} | lr {current_lr:.6f}"
+        logger.info(
+            f"Epoch {epoch} | Training Loss {train_loss:.4f} | "
+            f"Validation Loss {val_loss:.4f} | lr {current_lr:.6f}"
         )
 
         checkpoint = {
             EPOCH: epoch,
             MODEL_STATE_DICT: MODEL.state_dict(),
             OPTIMIZER_STATE_DICT: OPTIMIZER.state_dict(),
-            BEST_VAL_LOSS: best_val_loss,
+            SCHEDULER_STATE_DICT: SCHEDULER.state_dict(),
+            BEST_VAL_LOSS: val_loss,
         }
 
         last_path = os.path.join(Config.train.checkpoint_dir, "last.pt")
         torch.save(checkpoint, last_path)
+        logger.info("Saved current checkpoint")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             checkpoint[BEST_VAL_LOSS] = best_val_loss
             best_path = os.path.join(Config.train.checkpoint_dir, "best.pt")
             torch.save(checkpoint, best_path)
+            logger.info("")
+
+    logger.info("==== Training Completed ====")
+
+
+if __name__ == "__main__":
+    train()

@@ -2,6 +2,7 @@ import torch
 import yaml
 from dataclasses import dataclass
 import logging
+from logger import configure_logging
 
 
 @dataclass
@@ -12,8 +13,8 @@ class ModelConfig:
 
 @dataclass
 class TrainingConfig:
+    checkpoint_dir: str
     initial_checkpoint: str | None = None
-    log: bool = True
     epochs: int = 10
     train_batch_size: int = 32
     validation_batch_size: int = 32
@@ -23,10 +24,11 @@ class TrainingConfig:
 
 @dataclass
 class GlobalConfig:
-    verbose: bool
     model: ModelConfig
     train: TrainingConfig
     logger: logging.Logger
+    log_level: str = "INFO"
+    log_to_terminal: bool = True
     device: torch.Device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -34,6 +36,9 @@ with open("config.yaml", "r") as f:
     _config_dict = yaml.safe_load(f)
 
 
-_model_config = ModelConfig(**_config_dict.get("model", {}))
-_training_config = TrainingConfig(**_config_dict.get("train", {}))
-Config = GlobalConfig(model=_model_config, train=_training_config, **_config_dict)
+_config_dict["model"] = ModelConfig(**_config_dict.get("model", {}))
+_config_dict["train"] = TrainingConfig(**_config_dict.get("train", {}))
+_config_dict["logger"] = configure_logging(
+    _config_dict.get("log_level", "INFO"), _config_dict.get("log_to_terminal", True)
+)
+Config = GlobalConfig(**_config_dict)
