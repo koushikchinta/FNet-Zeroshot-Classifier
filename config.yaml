@@ -1,0 +1,4 @@
+device: cpu
+
+model:
+num_encoding_layers: 2
