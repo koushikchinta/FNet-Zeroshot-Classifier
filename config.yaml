@@ -1,13 +1,17 @@
 device: cpu
 
 model:
-  num_encoding_layers: 2
+  num_encoding_layers: 4
   dropout: 0.1
 
 train:
-  epochs: 10
+  epochs: 50
   train_batch_size: 32
   validation_batch_size: 32
   base_lr: 0.0003
   weight_decay: 0.00005
   checkpoint_dir: 'checkpoints'
+
+test:
+  run_tests: true
+  batch_size: 32

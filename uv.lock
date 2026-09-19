@@ -2105,6 +2105,15 @@ wheels = [
 ]
 
 [[package]]
+name = "torchinfo"
+version = "1.8.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/d9/2b811d1c0812e9ef23e6cf2dbe022becbe6c5ab065e33fd80ee05c0cd996/torchinfo-1.8.0.tar.gz", hash = "sha256:72e94b0e9a3e64dc583a8e5b7940b8938a1ac0f033f795457f27e6f4e7afa2e9", size = 25880, upload-time = "2023-05-14T19:23:26.377Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/72/25/973bd6128381951b23cdcd8a9870c6dcfc5606cb864df8eabd82e529f9c1/torchinfo-1.8.0-py3-none-any.whl", hash = "sha256:2e911c2918603f945c26ff21a3a838d12709223dc4ccf243407bce8b6e897b46", size = 23377, upload-time = "2023-05-14T19:23:24.141Z" },
+]
+
+[[package]]
 name = "tqdm"
 version = "4.70.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2415,8 +2424,10 @@ dependencies = [
     { name = "datasets" },
     { name = "ipywidgets" },
     { name = "litellm" },
+    { name = "scikit-learn" },
     { name = "sentence-transformers" },
     { name = "torch" },
+    { name = "torchinfo" },
 ]
 
 [package.metadata]
@@ -2425,8 +2436,10 @@ requires-dist = [
     { name = "datasets", specifier = ">=5.0.1" },
     { name = "ipywidgets", specifier = ">=8.1.9" },
     { name = "litellm", specifier = ">=1.101.0" },
+    { name = "scikit-learn", specifier = ">=1.9.1" },
     { name = "sentence-transformers", specifier = ">=6.0.1" },
     { name = "torch", specifier = ">=2.14.0" },
+    { name = "torchinfo", specifier = ">=1.8.0" },
 ]
 
 [[package]]

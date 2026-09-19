@@ -3,11 +3,12 @@ from embedding import get_token_embeddings, EMBEDDING_DIM
 from dataset import (
     train_dataset,
     validation_dataset,
+    test_dataset,
     SENTENCE1_COLUMN,
     SENTENCE2_COLUMN,
     SCORE,
 )
-import torch.nn.functional as F
+import torch.nn as nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import LambdaLR
 from config import Config
@@ -16,6 +17,7 @@ import torch
 import math
 import os
 import logging
+from sklearn.metrics import accuracy_score, classification_report, f1_score, recall_score
 from logger import dict_log
 
 
@@ -38,7 +40,7 @@ def collate_fn(batch):
 
 
 def train() -> None:
-    logger = Config.logger    
+    logger = Config.logger
 
     train_dataset_loader = DataLoader(
         train_dataset,
@@ -93,9 +95,15 @@ def train() -> None:
         OPTIMIZER.load_state_dict(checkpoint[OPTIMIZER_STATE_DICT])
         SCHEDULER.load_state_dict(checkpoint[SCHEDULER_STATE_DICT])
         best_val_loss = checkpoint.get(BEST_VAL_LOSS, float("inf"))
-        dict_log({"Epoch": checkpoint[EPOCH], "Validation Loss": best_val_loss}, logging.INFO, heading="Checkpoint metrics")
+        dict_log(
+            {"Epoch": checkpoint[EPOCH], "Validation Loss": best_val_loss},
+            logging.INFO,
+            heading="Checkpoint metrics",
+        )
     else:
         MODEL.to(Config.device)
+
+    LOSS_FN = nn.MSELoss()
 
     os.makedirs(Config.train.checkpoint_dir, exist_ok=True)
 
@@ -113,7 +121,7 @@ def train() -> None:
 
             OPTIMIZER.zero_grad()
             logits = MODEL(x, x_mask, y, y_mask)
-            loss = F.binary_cross_entropy_with_logits(logits.squeeze(-1), score.float())
+            loss = LOSS_FN(logits.squeeze(-1), score.float())
             loss.backward()
 
             torch.nn.utils.clip_grad_norm_(MODEL.parameters(), 1.0)
@@ -137,9 +145,7 @@ def train() -> None:
                 score = score.to(Config.device, non_blocking=True)
 
                 logits = MODEL(x, x_mask, y, y_mask)
-                loss = F.binary_cross_entropy_with_logits(
-                    logits.squeeze(-1), score.float()
-                )
+                loss = LOSS_FN(logits.squeeze(-1), score.float())
 
                 batch_size = score.size(0)
                 val_loss_sum += loss.item() * batch_size
@@ -148,10 +154,7 @@ def train() -> None:
         val_loss = val_loss_sum / max(1, val_examples)
         current_lr = SCHEDULER.get_last_lr()[0]
 
-        logger.info(
-            f"Epoch {epoch} | Training Loss {train_loss:.4f} | "
-            f"Validation Loss {val_loss:.4f} | lr {current_lr:.6f}"
-        )
+        dict_log({"Epoch": epoch, "Training Loss" : train_loss, "Validation Loss": val_loss, "lr": current_lr}, logging.INFO, 'Metrics', sep=' | ')
 
         checkpoint = {
             EPOCH: epoch,
@@ -170,9 +173,77 @@ def train() -> None:
             checkpoint[BEST_VAL_LOSS] = best_val_loss
             best_path = os.path.join(Config.train.checkpoint_dir, "best.pt")
             torch.save(checkpoint, best_path)
-            logger.info("")
+            logger.info("Saved current best checkpoint")
 
     logger.info("==== Training Completed ====")
+    logger.info("==== Running on test dataset ====")
+    checkpoint = torch.load(os.path.join(Config.train.checkpoint_dir, "best.pt"), map_location=Config.device)
+    dict_log(
+        {"Epoch": checkpoint[EPOCH], "Validation Loss": checkpoint[BEST_VAL_LOSS]},
+        logging.INFO,
+        heading="Best Checkpoint metrics",
+    )
+
+    MODEL.load_state_dict(checkpoint)
+
+    test_dataset_loader = DataLoader(
+        test_dataset,
+        batch_size=Config.test.batch_size,
+        shuffle=False,
+        collate_fn=collate_fn
+    )
+
+    MODEL.eval()
+    test_loss_sum = 0.0
+    test_examples = 0
+    test_targets = []
+    test_predictions = []
+    with torch.no_grad():
+        for X, Y, score in test_dataset_loader:
+            x, x_mask = get_token_embeddings(X)
+            y, y_mask = get_token_embeddings(Y)
+            score = score.to(Config.device, non_blocking=True)
+
+            logits = MODEL(x, x_mask, y, y_mask)
+            labels = torch.where(
+                logits <= 0.33,
+                0.0,
+                torch.where(logits < 0.67, 0.5, 1.0),
+            )
+            batch_size = score.size(0)
+            test_loss_sum += nn.functional.mse_loss(
+                logits.squeeze(-1), score.float(), reduction="sum"
+            ).item()
+            test_targets.append(score.cpu())
+            test_predictions.append(labels.squeeze(-1).cpu())
+            test_examples += batch_size
+
+    targets = torch.cat(test_targets).numpy()
+    predictions = torch.cat(test_predictions).numpy()
+    dict_log(
+        {
+            "Test Loss": test_loss_sum / max(1, test_examples),
+            "Test Accuracy": accuracy_score(targets, predictions),
+            "Test Recall (Macro)": recall_score(
+                targets, predictions, average="macro", zero_division=0
+            ),
+            "Test F1 Score (Macro)": f1_score(
+                targets, predictions, average="macro", zero_division=0
+            ),
+        },
+        logging.INFO,
+        heading="Test metrics",
+    )
+    logger.info(
+        "Test classification report:\n%s",
+        classification_report(
+            targets,
+            predictions,
+            labels=[0.0, 0.5, 1.0],
+            target_names=["0.0", "0.5", "1.0"],
+            zero_division=0,
+        ),
+    )
 
 
 if __name__ == "__main__":

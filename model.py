@@ -72,10 +72,10 @@ class Model(nn.Module):
         self._segment_embedding = nn.Embedding(2, embedding_dim)
         self._encoder = Encoder(embedding_dim, num_layers, dropout)
         self._classifier = nn.Sequential(
-            nn.Linear(4 * embedding_dim, embedding_dim),
+            nn.Linear(embedding_dim, 4 * embedding_dim),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(embedding_dim, 1),
+            nn.Linear(4 * embedding_dim, 1),
         )
 
     @staticmethod
@@ -101,8 +101,26 @@ class Model(nn.Module):
         _input = _input + self._segment_embedding(segment_ids)
         mask = torch.cat([x_mask, y_mask], dim=1).bool()
         _output = self._encoder(_input, mask)
-        Lp = x.size(1)
-        u = self.masked_mean_pool(_output[:, :Lp], x_mask)
-        v = self.masked_mean_pool(_output[:, Lp:], y_mask)
-        features = torch.cat([u, v, torch.abs(u - v), u * v], dim=-1)
+        features = self.masked_mean_pool(_output, mask)
         return self._classifier(features)
+
+
+if __name__ == "__main__":
+    from config import Config
+    from embedding import EMBEDDING_DIM
+    from torchinfo import summary
+
+    model = Model(EMBEDDING_DIM, Config.model.num_encoding_layers, Config.model.dropout)
+
+    batch_size = 2
+    seq_len = 512
+
+    summary(
+        model,
+        input_data=[
+            torch.randn(batch_size, seq_len, EMBEDDING_DIM),
+            torch.ones(batch_size, seq_len, dtype=torch.bool),
+            torch.randn(batch_size, seq_len, EMBEDDING_DIM),
+            torch.ones(batch_size, seq_len, dtype=torch.bool),
+        ],
+    )

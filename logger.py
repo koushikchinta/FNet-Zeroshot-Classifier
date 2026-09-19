@@ -28,18 +28,22 @@ class ColoredFormatter(logging.Formatter):
         level_color = self.LEVEL_COLORS.get(record.levelno, "")
 
         if hasattr(record, "dict_log"):
+            sep = record.dict_log.pop('__sep')
             message = record.getMessage()
             parts = []
 
             max_length = max([len(key) for key in record.dict_log.keys()])
 
             for key, value in record.dict_log.items():
+                _space = ''
+                if sep == '\n':
+                    _space = ' ' * (max_length - len(key))
                 parts.append(
-                    f"{Fore.YELLOW}{key + ' '*(max_length - len(key))}{Style.RESET_ALL}: "
+                    f"{Fore.YELLOW}{key + _space}{Style.RESET_ALL}: "
                     f"{Fore.BLUE}{value}{Style.RESET_ALL}"
                 )
 
-            message = message + '\n' + "\n".join(parts)
+            message = message + "\n" + sep.join(parts)
 
         else:
             message = record.getMessage()
@@ -70,7 +74,7 @@ def configure_logging(log_level: str, log_to_terminal: bool) -> logging.Logger:
     logger.handlers.clear()
 
     logger.propagate = False
-    
+
     if log_to_terminal:
         stream_handler = logging.StreamHandler(sys.stdout)
 
@@ -87,8 +91,9 @@ def configure_logging(log_level: str, log_to_terminal: bool) -> logging.Logger:
     return logger
 
 
-def dict_log(log_dict: dict, level: int, heading: str = ''):
+def dict_log(log_dict: dict, level: int, heading: str = "", sep = '\n'):
     logger = logging.getLogger(LOGGER_NAME)
+    log_dict['__sep'] = sep
     logger.log(
         level,
         heading,
