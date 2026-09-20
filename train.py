@@ -266,7 +266,7 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    if test:
+    if args.test:
         test()
     else:
         train()
