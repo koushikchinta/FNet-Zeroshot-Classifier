@@ -38,6 +38,82 @@ def collate_fn(batch):
 
     return premises, hypotheses, labels
 
+def test():
+    logger = Config.logger
+    MODEL = Model(
+            EMBEDDING_DIM,
+            Config.model.num_encoding_layers,
+            dropout=Config.model.dropout,
+    )
+
+    checkpoint = torch.load(os.path.join(Config.train.checkpoint_dir, "best.pt"), map_location=Config.device)
+    dict_log(
+        {"Epoch": checkpoint[EPOCH], "Validation Loss": checkpoint[BEST_VAL_LOSS]},
+        logging.INFO,
+        heading="Best Checkpoint metrics",
+    )
+
+    MODEL.load_state_dict(checkpoint[MODEL_STATE_DICT])
+
+    test_dataset_loader = DataLoader(
+        test_dataset,
+        batch_size=Config.test.batch_size,
+        shuffle=False,
+        collate_fn=collate_fn
+    )
+
+    MODEL.eval()
+    test_loss_sum = 0.0
+    test_examples = 0
+    test_targets = []
+    test_predictions = []
+    with torch.no_grad():
+        for X, Y, score in test_dataset_loader:
+            x, x_mask = get_token_embeddings(X)
+            y, y_mask = get_token_embeddings(Y)
+            score = score.to(Config.device, non_blocking=True)
+
+            logits = MODEL(x, x_mask, y, y_mask)
+            labels = torch.where(
+                logits <= 0.33,
+                2,
+                torch.where((logits < 0.67) & (logits > 0.33), 1, 0),
+            )
+            batch_size = score.size(0)
+            test_loss_sum += nn.functional.mse_loss(
+                logits.squeeze(-1), score.float(), reduction="sum"
+            ).item()
+            test_targets.append(score.cpu())
+            test_predictions.append(labels.squeeze(-1).cpu())
+            test_examples += batch_size
+
+    targets = torch.cat(test_targets).numpy()
+    predictions = torch.cat(test_predictions).numpy()
+    dict_log(
+        {
+            "Test Loss": test_loss_sum / max(1, test_examples),
+            "Test Accuracy": accuracy_score(targets, predictions),
+            "Test Recall (Macro)": recall_score(
+                targets, predictions, average="micro", zero_division=0
+            ),
+            "Test F1 Score (Macro)": f1_score(
+                targets, predictions, average="micro", zero_division=0
+            ),
+        },
+        logging.INFO,
+        heading="Test metrics",
+    )
+    logger.info(
+        "Test classification report:\n%s",
+        classification_report(
+            targets,
+            predictions,
+            labels=[0, 1, 2],
+            target_names=["0", "1", "2"],
+            zero_division=0,
+        ),
+    )
+
 
 def train() -> None:
     logger = Config.logger
@@ -177,74 +253,20 @@ def train() -> None:
 
     logger.info("==== Training Completed ====")
     logger.info("==== Running on test dataset ====")
-    checkpoint = torch.load(os.path.join(Config.train.checkpoint_dir, "best.pt"), map_location=Config.device)
-    dict_log(
-        {"Epoch": checkpoint[EPOCH], "Validation Loss": checkpoint[BEST_VAL_LOSS]},
-        logging.INFO,
-        heading="Best Checkpoint metrics",
-    )
-
-    MODEL.load_state_dict(checkpoint)
-
-    test_dataset_loader = DataLoader(
-        test_dataset,
-        batch_size=Config.test.batch_size,
-        shuffle=False,
-        collate_fn=collate_fn
-    )
-
-    MODEL.eval()
-    test_loss_sum = 0.0
-    test_examples = 0
-    test_targets = []
-    test_predictions = []
-    with torch.no_grad():
-        for X, Y, score in test_dataset_loader:
-            x, x_mask = get_token_embeddings(X)
-            y, y_mask = get_token_embeddings(Y)
-            score = score.to(Config.device, non_blocking=True)
-
-            logits = MODEL(x, x_mask, y, y_mask)
-            labels = torch.where(
-                logits <= 0.33,
-                0.0,
-                torch.where(logits < 0.67, 0.5, 1.0),
-            )
-            batch_size = score.size(0)
-            test_loss_sum += nn.functional.mse_loss(
-                logits.squeeze(-1), score.float(), reduction="sum"
-            ).item()
-            test_targets.append(score.cpu())
-            test_predictions.append(labels.squeeze(-1).cpu())
-            test_examples += batch_size
-
-    targets = torch.cat(test_targets).numpy()
-    predictions = torch.cat(test_predictions).numpy()
-    dict_log(
-        {
-            "Test Loss": test_loss_sum / max(1, test_examples),
-            "Test Accuracy": accuracy_score(targets, predictions),
-            "Test Recall (Macro)": recall_score(
-                targets, predictions, average="macro", zero_division=0
-            ),
-            "Test F1 Score (Macro)": f1_score(
-                targets, predictions, average="macro", zero_division=0
-            ),
-        },
-        logging.INFO,
-        heading="Test metrics",
-    )
-    logger.info(
-        "Test classification report:\n%s",
-        classification_report(
-            targets,
-            predictions,
-            labels=[0.0, 0.5, 1.0],
-            target_names=["0.0", "0.5", "1.0"],
-            zero_division=0,
-        ),
-    )
+    test()
 
 
 if __name__ == "__main__":
-    train()
+    import argparse
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--test",
+        action="store_true"
+    )
+
+    args = parser.parse_args()
+    if test:
+        test()
+    else:
+        train()

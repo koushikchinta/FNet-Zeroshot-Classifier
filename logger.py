@@ -29,7 +29,7 @@ class ColoredFormatter(logging.Formatter):
 
         if hasattr(record, "dict_log"):
             sep = record.dict_log.pop('__sep')
-            message = record.getMessage()
+            message = record.dict_log.pop('__heading')
             parts = []
 
             max_length = max([len(key) for key in record.dict_log.keys()])
@@ -94,8 +94,9 @@ def configure_logging(log_level: str, log_to_terminal: bool) -> logging.Logger:
 def dict_log(log_dict: dict, level: int, heading: str = "", sep = '\n'):
     logger = logging.getLogger(LOGGER_NAME)
     log_dict['__sep'] = sep
+    log_dict['__heading'] = heading
     logger.log(
         level,
-        heading,
+        heading + '\n' + sep.join([f'{key}: {value}' for key, value in log_dict.items()]),
         extra={"dict_log": log_dict},
     )
