@@ -35,7 +35,7 @@ class GlobalConfig:
     logger: logging.Logger
     log_level: str = "INFO"
     log_to_terminal: bool = True
-    device: torch.Device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 with open("config.yaml", "r") as f:
