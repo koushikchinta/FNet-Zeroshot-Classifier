@@ -2,7 +2,16 @@ import kagglehub
 from kagglehub import KaggleDatasetAdapter
 from datasets import Dataset, concatenate_datasets
 import random
+import re
+from embedding import _tokenizer
+
+
 from utils import *
+
+
+# ============================================================
+# TAG DEFINITIONS
+# ============================================================
 
 tags = {
  "Administrative-Guide": "How-to manuals, user handbooks, and end-user instructional documentation. Characterized by step-by-step numbered instructions, troubleshooting tables, screenshots, and FAQ sections. Tone is helpful and explanatory; aimed at enabling a reader to perform a task. Unlike a Policy, it is informational rather than mandatory. Unlike a Procedure, the audience is broader (end users, new hires) and the scope is not tied to a specific internal business workflow.",
@@ -30,13 +39,73 @@ tags = {
  "Marketing-Webinars": "Content tied to a live or recorded webinar presentation. Presenter scripts, slide-deck content, Q&A preparation, registration landing-page copy, and post-webinar follow-up emails. Unlike Event Material, the focus is the presentation content for a single virtual session, not the broader event logistics."
 }
 
+
+# ============================================================
+# TEXT PREPROCESSING
+# ============================================================
+MAX_LENGTH = 600
+
+
+def clean_text(text: str) -> str:
+    if not text:
+        return ""
+
+    text = str(text)
+
+    # Normalize whitespace
+    text = text.replace("\r", " ")
+    text = text.replace("\n", " ")
+    text = text.replace("\t", " ")
+    text = re.sub(r"\s+", " ", text)
+
+    # Remove repeated decorative symbols
+    text = re.sub(r"([^\w\s])\1{2,}", " ", text)
+
+    # Remove standalone decorative symbol groups
+    text = re.sub(
+        r"(?<!\S)[^\w\s]{2,}(?!\S)",
+        " ",
+        text
+    )
+
+    # Remove separator lines
+    text = re.sub(
+        r"(?<!\w)(?:[-_=*#~]){3,}(?!\w)",
+        " ",
+        text
+    )
+
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
+
+def truncate_text(text: str, max_length: int = MAX_LENGTH) -> str:
+    encoding = _tokenizer.encode(text)
+
+    if len(encoding.ids) <= max_length:
+        return text
+
+    return _tokenizer.decode(
+        encoding.ids[:max_length]
+    )
+
+
+# ============================================================
+# LOAD DATASET
+# ============================================================
+
 file_path = "new_file_classification_chunks_report.csv"
 
-hf_dataset: Dataset  = kagglehub.load_dataset(
-  KaggleDatasetAdapter.HUGGING_FACE,
-  "koushikchinta/tagging",
-  file_path
+hf_dataset: Dataset = kagglehub.load_dataset(
+    KaggleDatasetAdapter.HUGGING_FACE,
+    "koushikchinta/tagging",
+    file_path
 )
+
+
+# ============================================================
+# FLATTEN DATASET
+# ============================================================
 
 def flatten(batch):
     new_batch = {
@@ -49,17 +118,29 @@ def flatten(batch):
         batch["original_chunk_text"],
         batch["classification_labels"],
     ):
+
+        # ----------------------------------------------------
+        # CLEAN TEXT BEFORE ADDING IT TO THE TRAINING DATASET
+        # ----------------------------------------------------
+
+        text = clean_text(text)
+        text = truncate_text(text)
+
         _tags = []
         _scores = []
 
         if labels and labels.strip():
+
             labels = labels.strip()
+
             tag_names = labels.split(",")
 
             for tag_name in tag_names:
+
                 _name, _score = tag_name.split(":", 1)
 
                 _name = _name.strip()
+
                 _tags.append(_name)
                 _scores.append(float(_score))
 
@@ -75,18 +156,34 @@ def flatten(batch):
             _scores.extend([0.0] * num_random)
 
         else:
+
             _tags = random.choices(
                 list(tags.keys()),
                 k=5,
             )
+
             _scores = [0.0] * 5
 
+        # ----------------------------------------------------
+        # CREATE TEXT/TAG PAIRS
+        # ----------------------------------------------------
+
         for _tag, _score in zip(_tags, _scores):
+
             new_batch[SENTENCE1_COLUMN].append(text)
-            new_batch[SENTENCE2_COLUMN].append(tags[_tag])
+
+            new_batch[SENTENCE2_COLUMN].append(
+                tags[_tag]
+            )
+
             new_batch[SCORE].append(_score)
 
     return new_batch
+
+
+# ============================================================
+# APPLY PREPROCESSING + FLATTEN
+# ============================================================
 
 hf_dataset = (
     hf_dataset
@@ -104,6 +201,11 @@ hf_dataset = (
     )
 )
 
+
+# ============================================================
+# CREATE TAG-TO-DESCRIPTION PAIRS
+# ============================================================
+
 tag_pairs = {
     SENTENCE1_COLUMN: [],
     SENTENCE2_COLUMN: [],
@@ -112,32 +214,118 @@ tag_pairs = {
 
 tag_names = list(tags.keys())
 
+
 for tag_name, description in tags.items():
 
-    # Positive: tag name -> its own description
+    # Positive:
+    # tag name -> its own description
     tag_pairs[SENTENCE1_COLUMN].append(tag_name)
+
     tag_pairs[SENTENCE2_COLUMN].append(description)
+
     tag_pairs[SCORE].append(1.0)
 
-    # Negative: tag name -> another tag's description
+    # Negative:
+    # tag name -> another tag's description
     random_tags = random.choices(
-        [t for t in tag_names if t != tag_name], k = 3
+        [t for t in tag_names if t != tag_name],
+        k=3,
     )
 
     for random_tag in random_tags:
+
         tag_pairs[SENTENCE1_COLUMN].append(tag_name)
-        tag_pairs[SENTENCE2_COLUMN].append(tags[random_tag])
+
+        tag_pairs[SENTENCE2_COLUMN].append(
+            tags[random_tag]
+        )
+
         tag_pairs[SCORE].append(0.0)
+
 
 df2 = Dataset.from_dict(tag_pairs)
 
-kaggle_set = concatenate_datasets([df2, hf_dataset]).train_test_split(test_size=0.15)
-kaggle_train_set = kaggle_set['train']
-kaggle_sub_set = kaggle_set['test'].train_test_split(test_size=0.5)
-kaggle_test_set = kaggle_sub_set['train']
-kaggle_val_set = kaggle_sub_set['test']
+
+# ============================================================
+# COMBINE DATASETS
+# ============================================================
+
+kaggle_set = concatenate_datasets([
+    df2,
+    hf_dataset,
+]).train_test_split(
+    test_size=0.15
+)
+
+
+kaggle_train_set = kaggle_set["train"]
+
+
+kaggle_sub_set = kaggle_set["test"].train_test_split(
+    test_size=0.5
+)
+
+
+kaggle_test_set = kaggle_sub_set["train"]
+
+kaggle_val_set = kaggle_sub_set["test"]
+
+
+# ============================================================
+# DATASET INFORMATION
+# ============================================================
 
 if __name__ == "__main__":
+
+    print("\n===== DATASET =====")
+
+    print("Train:")
     print(kaggle_train_set)
+
+    print("\nTest:")
     print(kaggle_test_set)
+
+    print("\nValidation:")
     print(kaggle_val_set)
+
+    # --------------------------------------------------------
+    # Show a few examples before/after cleaning
+    # --------------------------------------------------------
+
+    print("\n===== SAMPLE CLEANED TEXT =====")
+
+    for i in range(min(5, len(kaggle_train_set))):
+
+        print("\n--- Example", i, "---")
+
+        print(
+            kaggle_train_set[i][SENTENCE1_COLUMN]
+        )
+
+        print(
+            "TAG:",
+            kaggle_train_set[i][SENTENCE2_COLUMN]
+        )
+
+        print(
+            "SCORE:",
+            kaggle_train_set[i][SCORE]
+        )
+
+
+
+    lengths = [
+        len(_tokenizer.encode(text).ids)
+        for text in hf_dataset[SENTENCE1_COLUMN]
+    ]
+
+    import numpy as np
+
+    print("Token statistics")
+    print("---------------")
+    print("Mean :", np.mean(lengths))
+    print("P50  :", np.percentile(lengths, 50))
+    print("P90  :", np.percentile(lengths, 90))
+    print("P95  :", np.percentile(lengths, 95))
+    print("P99  :", np.percentile(lengths, 99))
+    print("Max  :", max(lengths))
