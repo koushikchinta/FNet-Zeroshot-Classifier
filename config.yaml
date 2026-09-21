@@ -1,6 +1,6 @@
 model:
   num_encoding_layers: 4
-  dropout: 0.1
+  dropout: 0.15
 
 train:
   epochs: 50
@@ -9,6 +9,7 @@ train:
   base_lr: 0.0003
   weight_decay: 0.00005
   checkpoint_dir: 'checkpoints'
+  initial_checkpoint: 'checkpoints/best.pt'
 
 test:
   run_tests: true
