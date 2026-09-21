@@ -32,9 +32,9 @@ _ds3 = (load_dataset("chrishuber/kaggle_mnli", split="train")
         .rename_column("gold_label", SCORE)
         .map(lambda x: score(x, 0)))
 
-train_dataset = concatenate_datasets([_ds1['train'], _ds3, kaggle_train_set])
-validation_dataset = concatenate_datasets([_ds1['dev'], _ds2, kaggle_val_set])
-test_dataset = concatenate_datasets([_ds1['test'], kaggle_test_set])
+train_dataset = concatenate_datasets([_ds1['train'], kaggle_train_set])
+validation_dataset = concatenate_datasets([_ds2, kaggle_val_set])
+test_dataset = concatenate_datasets([kaggle_test_set])
 
 if __name__ == "__main__":
     print(train_dataset[0])
