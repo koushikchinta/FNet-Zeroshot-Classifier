@@ -3,7 +3,7 @@ model:
   dropout: 0.15
 
 train:
-  epochs: 50
+  epochs: 10
   train_batch_size: 32
   validation_batch_size: 32
   base_lr: 0.0003
