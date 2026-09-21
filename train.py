@@ -7,6 +7,8 @@ from dataset import (
     SENTENCE1_COLUMN,
     SENTENCE2_COLUMN,
     SCORE,
+    CONTRADICTION,
+    ENTAILMENT,
 )
 import torch.nn as nn
 from torch.optim import AdamW
@@ -79,6 +81,7 @@ def test():
                 2,
                 torch.where((logits < 0.67) & (logits > 0.33), 1, 0),
             )
+            score = torch.where(score == CONTRADICTION, 2, torch.where(score == ENTAILMENT, 0, 1))
             batch_size = score.size(0)
             test_loss_sum += nn.functional.mse_loss(
                 logits.squeeze(-1), score.float(), reduction="sum"
