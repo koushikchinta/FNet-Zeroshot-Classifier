@@ -4,8 +4,8 @@ model:
 
 train:
   epochs: 10
-  train_batch_size: 32
-  validation_batch_size: 32
+  train_batch_size: 64
+  validation_batch_size: 64
   base_lr: 0.00002
   weight_decay: 0.00005
   checkpoint_dir: 'checkpoints'

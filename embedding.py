@@ -25,7 +25,9 @@ def get_token_embeddings(
     )
 
     attention_mask = torch.tensor(
-        [e.attention_mask for e in encodings], dtype=torch.bool, device=device
+        [e.attention_mask for e in encodings],
+        dtype=torch.bool,
+        device=device,
     )
 
     with torch.no_grad():
